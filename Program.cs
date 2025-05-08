@@ -6,6 +6,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container
 builder.Services.AddControllersWithViews();
 
+AWS_ACCESS_KEY_ID="AKIAZBQE345LKPTEAHQD"
+AWS_SECRET_ACCESS_KEY="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"
+
 // Add database context (this is added above route mapping)
 builder.Services.AddDbContext<SalesDbContext>(options =>
     options.UseSqlServer("Server=localhost\\SpringHoneyLocal;Database=SalesDatabase;User Id = sa;Password="$pringH0n3y$$25";TrustServerCertificate=True;"));
