@@ -6,6 +6,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container
 builder.Services.AddControllersWithViews();
 
+AWS_ACCESS_KEY_ID="wewewewewe "
+AWS_SECRET_ACCESS_KEY="weweweweweweweew"
+
+
 
 // Add database context (this is added above route mapping)
 builder.Services.AddDbContext<SalesDbContext>(options =>
