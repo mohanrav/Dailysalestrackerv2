@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Threat Modeling\\Discovery Research\\My Apps\\Version 2\\DailySalesTracker.csproj": {}
+    "C:\\Users\\moravind\\Documents\\Dailysalestrackerv2\\DailySalesTracker.csproj": {}
   },
   "projects": {
-    "C:\\Threat Modeling\\Discovery Research\\My Apps\\Version 2\\DailySalesTracker.csproj": {
+    "C:\\Users\\moravind\\Documents\\Dailysalestrackerv2\\DailySalesTracker.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Threat Modeling\\Discovery Research\\My Apps\\Version 2\\DailySalesTracker.csproj",
+        "projectUniqueName": "C:\\Users\\moravind\\Documents\\Dailysalestrackerv2\\DailySalesTracker.csproj",
         "projectName": "DailySalesTracker",
-        "projectPath": "C:\\Threat Modeling\\Discovery Research\\My Apps\\Version 2\\DailySalesTracker.csproj",
+        "projectPath": "C:\\Users\\moravind\\Documents\\Dailysalestrackerv2\\DailySalesTracker.csproj",
         "packagesPath": "C:\\Users\\moravind\\.nuget\\packages\\",
-        "outputPath": "C:\\Threat Modeling\\Discovery Research\\My Apps\\Version 2\\obj\\",
+        "outputPath": "C:\\Users\\moravind\\Documents\\Dailysalestrackerv2\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -81,7 +81,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.300-preview.0.25177.5/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.304/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
