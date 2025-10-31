@@ -1,0 +1,50 @@
+[
+    {
+        "code": "1",
+        "type": "tops",
+        "price": 10.12,
+        "date_added": "2025-10-30",
+        "expiry_date": null,
+        "max_discount": 10
+    },
+    {
+        "code": "2",
+        "type": "shirt",
+        "price": 20.0,
+        "date_added": "2025-10-30",
+        "expiry_date": null,
+        "max_discount": 3
+    },
+    {
+        "code": "3",
+        "type": "pants",
+        "price": 23.0,
+        "date_added": "2025-10-30",
+        "expiry_date": null,
+        "max_discount": 10
+    },
+    {
+        "code": "4",
+        "type": "shorts",
+        "price": 12.0,
+        "date_added": "2025-10-30",
+        "expiry_date": null,
+        "max_discount": 12
+    },
+    {
+        "code": "5",
+        "type": "shoes",
+        "price": 30.0,
+        "date_added": "2025-10-30",
+        "expiry_date": null,
+        "max_discount": 2
+    },
+    {
+        "code": "6",
+        "type": "fruits",
+        "price": 5.0,
+        "date_added": "2025-10-30",
+        "expiry_date": "2025-11-30",
+        "max_discount": 1
+    }
+]
