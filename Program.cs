@@ -8,7 +8,7 @@ builder.Services.AddControllersWithViews();
 
 // Add database context (this is added above route mapping)
 builder.Services.AddDbContext<SalesDbContext>(options =>
-    options.UseSqlServer("Server=localhost\\SpringHoneyLocal;Database=SalesDatabase;User Id = sa;Password="$pringH0n3y$$25";TrustServerCertificate=True;"));
+    options.UseSqlServer("Server=localhost\\mssqlserver;Database=SalesDatabase;User Id = sa;Password='Rizla+0range';TrustServerCertificate=True;"));
 
 var app = builder.Build();
 
@@ -32,4 +32,7 @@ app.MapControllerRoute(
     pattern: "{controller=Sales}/{action=Index}/{id?}");
 
 app.Run();
+
+AWS_ACCESS_KEY_ID="yuysfddcfsjcsdcg cb"
+AWS_SECRET_ACCESS_KEY="dcksgdcjb346w7fed87362rfed78trwegc346"
  
