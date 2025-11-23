@@ -33,6 +33,6 @@ app.MapControllerRoute(
 
 app.Run();
 
-AWS_ACCESS_KEY_ID="yuysfddcfsjcsdcg cb"
+AWS_ACCESS_KEY_ID="yuysfddcfsjcsdcgcb"
 AWS_SECRET_ACCESS_KEY="dcksgdcjb346w7fed87362rfed78trwegc346"
  
