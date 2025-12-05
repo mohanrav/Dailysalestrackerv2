@@ -32,4 +32,6 @@ app.MapControllerRoute(
     pattern: "{controller=Sales}/{action=Index}/{id?}");
 
 app.Run();
- 
+
+AWS_ACCESS_KEY_ID="ssd ikj dlj d "
+AWS_SECRET_ACCESS_KEY="alkj lkj "
