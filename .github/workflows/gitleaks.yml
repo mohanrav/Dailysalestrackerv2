@@ -1,0 +1,59 @@
+name: Gitleaks Secret Scan
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+jobs:
+  gitleaks:
+    name: Run Gitleaks Secret Scanner
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install Gitleaks (dedicated workflow)
+        run: |
+          choco install gitleaks --yes --no-progress
+          gitleaks version
+
+      - name: Run Gitleaks with tuned ruleset
+        run: |
+          gitleaks detect `
+            --config security/gitleaks.toml `
+            --report-format sarif `
+            --report-path gitleaks.sarif `
+            --no-banner `
+            --redact
+        continue-on-error: true
+
+      # ✅ Upload SARIF to GitHub Security tab (if not a forked PR)
+      - name: Upload SARIF to GitHub Security tab
+        if: >
+          !(
+            github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.fork == true
+          )
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+      # ✅ Always export SARIF as artifact (so you can download/use elsewhere)
+      - name: Export SARIF as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-sarif
+          path: gitleaks.sarif

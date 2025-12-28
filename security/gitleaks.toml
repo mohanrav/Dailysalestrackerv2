@@ -1,0 +1,31 @@
+title = "Gitleaks rules tuned for MDC ingestion"
+
+[[rules]]
+id = "api-key"
+description = "Generic API Key detected"
+regex = '''(?i)(api[_-]?key|apikey|api[_-]?token)\s*[:=]\s*['"]?[A-Za-z0-9_\-]{16,}['"]?'''
+tags = ["secret", "api-key"]
+
+[[rules]]
+id = "password"
+description = "Hardcoded password detected"
+regex = '''(?i)(password|pwd|passphrase)\s*[:=]\s*['"][^'"]{6,}['"]'''
+tags = ["secret", "password"]
+
+[[rules]]
+id = "token"
+description = "Access token detected"
+regex = '''(?i)(bearer|access[_-]?token|auth[_-]?token)\s*[:=]\s*['"]?[A-Za-z0-9\-_\.]{20,}['"]?'''
+tags = ["secret", "token"]
+
+[[rules]]
+id = "connection-string"
+description = "Database connection string detected"
+regex = '''(?i)(Server=.*;Database=.*;User\s*Id=.*;Password=.*;)'''
+tags = ["secret", "connection-string"]
+
+[[rules]]
+id = "certificate"
+description = "Private key or certificate detected"
+regex = '''-----BEGIN (RSA|DSA|EC|PRIVATE|CERTIFICATE) KEY-----'''
+tags = ["secret", "certificate"]
