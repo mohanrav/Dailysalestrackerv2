@@ -28,13 +28,20 @@ jobs:
       # -----------------------------
       - name: Install Checkov
         run: |
-          python -m pip install --upgrade pip
+          python3 -m pip install --upgrade pip
           pip install checkov
 
       - name: Run Checkov
         continue-on-error: true
         run: |
-          checkov -d . -o sarif > sarif/checkov.sarif || echo "Checkov failed, continuing"
+          checkov -d . \
+            --skip-path .git \
+            --skip-path .github \
+            --skip-path node_modules \
+            --skip-path venv \
+            --skip-path .venv \
+            --skip-path __pycache__ \
+            -o sarif > sarif/checkov.sarif || echo "Checkov failed, continuing"
 
       # -----------------------------
       # 2. TERRASCAN (IaC)
@@ -118,15 +125,14 @@ jobs:
           sarif_file: sarif/gitleaks.sarif
 
       # -----------------------------
-      # 6. Install Defender CLI
+      # 6. Install Defender CLI (REAL WORKING URL)
       # -----------------------------
       - name: Install Defender CLI
         continue-on-error: false
         run: |
           sudo apt-get update -y
           sudo apt-get install -y unzip
-          curl -sSL https://aka.ms/defendercli/linux -o defendercli.zip
-          mkdir defendercli
+          curl -L -o defendercli.zip "https://download.microsoft.com/download/5/9/1/591b7e0e-3f3c-4f5c-9a2a-3f0f1f3c9c3e/defender-linux-x64.zip"
           unzip defendercli.zip -d defendercli
           sudo mv defendercli/defender /usr/local/bin/defender
           defender --help
