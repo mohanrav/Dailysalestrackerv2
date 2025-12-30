@@ -1,7 +1,7 @@
 
 # Note by Mohan. This workflow does not fail the pipeline. 
 
-name: Defender CLI – Upload 3rd‑party SARIF to MDC
+name: Defender CLI – Multi-scanner with MDC upload
 
 on:
   push:
@@ -23,9 +23,11 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    # ---------------------------------------------------------
-    # 1. CHECKOV (IaC)
-    # ---------------------------------------------------------
+    - name: Ensure SARIF directory
+      shell: pwsh
+      run: New-Item -ItemType Directory -Path sarif -Force | Out-Null
+
+    # CHECKOV
     - name: Install Checkov
       shell: pwsh
       continue-on-error: true
@@ -34,100 +36,102 @@ jobs:
     - name: Run Checkov
       shell: pwsh
       continue-on-error: true
-      run: checkov -d . -o sarif > checkov.sarif
+      run: |
+        checkov -d . -o sarif | Out-File -FilePath sarif/checkov.sarif -Encoding utf8
 
-    # ---------------------------------------------------------
-    # 2. TERRASCAN (IaC) — FIXED DOWNLOAD
-    # ---------------------------------------------------------
+    # TERRASCAN (with null-safe asset lookup)
     - name: Install Terrascan
       shell: pwsh
       continue-on-error: true
       run: |
         $release = Invoke-RestMethod -Uri "https://api.github.com/repos/tenable/terrascan/releases/latest"
-        $asset = $release.assets | Where-Object { $_.name -match "windows_amd64.zip" }
+        $asset = $release.assets | Where-Object { $_.name -like "*windows_amd64.zip*" }
+        if (-not $asset) {
+          Write-Host "No Windows Terrascan asset found. Skipping Terrascan install."
+          exit 0
+        }
         Invoke-WebRequest -Uri $asset.browser_download_url -OutFile terrascan.zip
-        Expand-Archive terrascan.zip -DestinationPath $env:USERPROFILE\terrascan
+        Expand-Archive terrascan.zip -DestinationPath $env:USERPROFILE\terrascan -Force
         echo "$env:USERPROFILE\terrascan" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
     - name: Run Terrascan
       shell: pwsh
       continue-on-error: true
-      run: terrascan scan -o sarif > terrascan.sarif
+      run: terrascan scan -o sarif | Out-File -FilePath sarif/terrascan.sarif -Encoding utf8
 
-    # ---------------------------------------------------------
-    # 3. TRIVY (Secrets)
-    # ---------------------------------------------------------
+    # TRIVY
     - name: Install Trivy
       shell: pwsh
       continue-on-error: true
       run: |
         Invoke-WebRequest -Uri "https://github.com/aquasecurity/trivy/releases/download/v0.67.0/trivy_0.67.0_windows-64bit.zip" -OutFile trivy.zip
-        Expand-Archive trivy.zip -DestinationPath $env:USERPROFILE\trivy
+        Expand-Archive trivy.zip -DestinationPath $env:USERPROFILE\trivy -Force
         echo "$env:USERPROFILE\trivy" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
     - name: Run Trivy for secrets
       shell: pwsh
       continue-on-error: true
-      run: trivy fs --scanners secret --format sarif --output trivy.sarif .
+      run: trivy fs --scanners secret --format sarif --output sarif/trivy.sarif .
 
-    # ---------------------------------------------------------
-    # 4. GITLEAKS (Secrets)
-    # ---------------------------------------------------------
+    # GITLEAKS
     - name: Install Gitleaks
       shell: pwsh
       continue-on-error: true
       run: |
         Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_windows_x64.zip" -OutFile gitleaks.zip
-        Expand-Archive gitleaks.zip -DestinationPath $env:USERPROFILE\gitleaks
+        Expand-Archive gitleaks.zip -DestinationPath $env:USERPROFILE\gitleaks -Force
         echo "$env:USERPROFILE\gitleaks" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
     - name: Run Gitleaks
       shell: pwsh
       continue-on-error: true
-      run: gitleaks detect --report-format sarif --report-path gitleaks.sarif
+      run: gitleaks detect --report-format sarif --report-path sarif/gitleaks.sarif
 
-    # ---------------------------------------------------------
-    # 5. Upload SARIF to GitHub Security Tab (optional)
-    # ---------------------------------------------------------
+    # Upload individual SARIFs to GitHub (optional)
     - name: Upload SARIF to GitHub (Checkov)
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
+      if: hashFiles('sarif/checkov.sarif') != ''
       with:
-        sarif_file: checkov.sarif
+        sarif_file: sarif/checkov.sarif
 
     - name: Upload SARIF to GitHub (Terrascan)
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
+      if: hashFiles('sarif/terrascan.sarif') != ''
       with:
-        sarif_file: terrascan.sarif
+        sarif_file: sarif/terrascan.sarif
 
     - name: Upload SARIF to GitHub (Trivy)
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
+      if: hashFiles('sarif/trivy.sarif') != ''
       with:
-        sarif_file: trivy.sarif
+        sarif_file: sarif/trivy.sarif
 
     - name: Upload SARIF to GitHub (Gitleaks)
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
+      if: hashFiles('sarif/gitleaks.sarif') != ''
       with:
-        sarif_file: gitleaks.sarif
+        sarif_file: sarif/gitleaks.sarif
 
-    # ---------------------------------------------------------
-    # 6. Install Defender CLI
-    # ---------------------------------------------------------
+    # Defender CLI
     - name: Install Defender CLI
       shell: pwsh
       continue-on-error: true
       run: |
         Invoke-WebRequest -Uri "https://aka.ms/defendercli/windows" -OutFile defendercli.zip
-        Expand-Archive defendercli.zip -DestinationPath $env:USERPROFILE\defendercli
+        Expand-Archive defendercli.zip -DestinationPath $env:USERPROFILE\defendercli -Force
         echo "$env:USERPROFILE\defendercli" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-    # ---------------------------------------------------------
-    # 7. Upload ALL SARIF files to Microsoft Defender for Cloud
-    # ---------------------------------------------------------
     - name: Upload SARIF to Microsoft Defender for Cloud
       shell: pwsh
-      continue-on-error: false   # <‑‑ This one SHOULD fail if upload fails
-      run: defender scan upload --sarif . --recursive
+      continue-on-error: false
+      run: |
+        $defenderPath = Join-Path $env:USERPROFILE "defendercli/defender.exe"
+        if (-not (Test-Path $defenderPath)) {
+          Write-Error "Defender CLI not found at $defenderPath"
+          exit 1
+        }
+        & $defenderPath scan upload --sarif ./sarif --recursive
