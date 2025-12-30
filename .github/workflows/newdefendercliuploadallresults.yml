@@ -132,11 +132,8 @@ jobs:
         run: |
           sudo apt-get update -y
           sudo apt-get install -y unzip
-
-          # Download the REAL Defender CLI Linux binary (not aka.ms)
           curl -L -o defendercli.zip "https://download.microsoft.com/download/5/9/1/591b7e0e-3f3c-4f5c-9a2a-3f0f1f3c9c3e/defender-linux-x64.zip"
 
-          # Verify file size (should be > 20MB)
           ls -lh defendercli.zip
 
           unzip defendercli.zip -d defendercli
