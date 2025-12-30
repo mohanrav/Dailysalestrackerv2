@@ -1,8 +1,7 @@
 
 # Note by Mohan. This workflow does not fail the pipeline. 
 
-name: Defender CLI – Multi-scanner with MDC upload
-
+ name: Defender CLI – Multi-scanner on Ubuntu
 on:
   push:
     branches: [ "main" ]
@@ -17,121 +16,125 @@ permissions:
 
 jobs:
   security-scan:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Ensure SARIF directory
-      shell: pwsh
-      run: New-Item -ItemType Directory -Path sarif -Force | Out-Null
+      run: mkdir -p sarif
 
-    # CHECKOV
+    # -----------------------------
+    # 1. CHECKOV (IaC)
+    # -----------------------------
     - name: Install Checkov
-      shell: pwsh
-      continue-on-error: true
-      run: pip install checkov
+    run: |
+        python -m pip install --upgrade pip
+        pip install checkov
 
     - name: Run Checkov
-      shell: pwsh
       continue-on-error: true
       run: |
-        checkov -d . -o sarif | Out-File -FilePath sarif/checkov.sarif -Encoding utf8
+        checkov -d . -o sarif > sarif/checkov.sarif || echo "Checkov failed, continuing"
 
-    # TERRASCAN (with null-safe asset lookup)
+    # -----------------------------
+    # 2. TERRASCAN (IaC)
+    # -----------------------------
     - name: Install Terrascan
-      shell: pwsh
       continue-on-error: true
       run: |
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/tenable/terrascan/releases/latest"
-        $asset = $release.assets | Where-Object { $_.name -like "*windows_amd64.zip*" }
-        if (-not $asset) {
-          Write-Host "No Windows Terrascan asset found. Skipping Terrascan install."
-          exit 0
-        }
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile terrascan.zip
-        Expand-Archive terrascan.zip -DestinationPath $env:USERPROFILE\terrascan -Force
-        echo "$env:USERPROFILE\terrascan" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        curl -sSL https://github.com/tenable/terrascan/releases/latest/download/terrascan_linux_amd64.tar.gz -o terrascan.tar.gz || exit 0
+        tar -xzf terrascan.tar.gz terrascan
+        sudo mv terrascan /usr/local/bin/terrascan
+        terrascan version || true
 
     - name: Run Terrascan
-      shell: pwsh
       continue-on-error: true
-      run: terrascan scan -o sarif | Out-File -FilePath sarif/terrascan.sarif -Encoding utf8
+      run: |
+        terrascan scan -o sarif > sarif/terrascan.sarif || echo "Terrascan failed, continuing"
 
-    # TRIVY
+    # -----------------------------
+    # 3. TRIVY (secrets / fs)
+    # -----------------------------
     - name: Install Trivy
-      shell: pwsh
       continue-on-error: true
       run: |
-        Invoke-WebRequest -Uri "https://github.com/aquasecurity/trivy/releases/download/v0.67.0/trivy_0.67.0_windows-64bit.zip" -OutFile trivy.zip
-        Expand-Archive trivy.zip -DestinationPath $env:USERPROFILE\trivy -Force
-        echo "$env:USERPROFILE\trivy" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        sudo apt-get update -y
+        sudo apt-get install -y wget
+        wget -qO- https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.51.2_Linux-64bit.tar.gz | tar xz
+        sudo mv trivy /usr/local/bin/trivy
+        trivy --version || true
 
-    - name: Run Trivy for secrets
-      shell: pwsh
+    - name: Run Trivy (filesystem secrets)
       continue-on-error: true
-      run: trivy fs --scanners secret --format sarif --output sarif/trivy.sarif .
+      run: |
+        trivy fs --scanners secret --format sarif --output sarif/trivy-fs.sarif . || echo "Trivy fs failed, continuing"
 
-    # GITLEAKS
+    # -----------------------------
+    # 4. GITLEAKS
+    # -----------------------------
     - name: Install Gitleaks
-      shell: pwsh
       continue-on-error: true
       run: |
-        Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_windows_x64.zip" -OutFile gitleaks.zip
-        Expand-Archive gitleaks.zip -DestinationPath $env:USERPROFILE\gitleaks -Force
-        echo "$env:USERPROFILE\gitleaks" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        GITLEAKS_VERSION=8.18.1
+        curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz -o gitleaks.tar.gz || exit 0
+        tar -xzf gitleaks.tar.gz gitleaks
+        sudo mv gitleaks /usr/local/bin/gitleaks
+        gitleaks version || true
 
     - name: Run Gitleaks
-      shell: pwsh
       continue-on-error: true
-      run: gitleaks detect --report-format sarif --report-path sarif/gitleaks.sarif
+      run: |
+        gitleaks detect --report-format sarif --report-path sarif/gitleaks.sarif || echo "Gitleaks failed, continuing"
 
-    # Upload individual SARIFs to GitHub (optional)
-    - name: Upload SARIF to GitHub (Checkov)
+    # -----------------------------
+    # 5. Upload SARIF to GitHub (PR annotations)
+    # -----------------------------
+    - name: Upload SARIF (Checkov)
       uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
       if: hashFiles('sarif/checkov.sarif') != ''
       with:
         sarif_file: sarif/checkov.sarif
 
-    - name: Upload SARIF to GitHub (Terrascan)
+    - name: Upload SARIF (Terrascan)
       uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
       if: hashFiles('sarif/terrascan.sarif') != ''
       with:
         sarif_file: sarif/terrascan.sarif
 
-    - name: Upload SARIF to GitHub (Trivy)
+    - name: Upload SARIF (Trivy fs)
       uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
-      if: hashFiles('sarif/trivy.sarif') != ''
+      if: hashFiles('sarif/trivy-fs.sarif') != ''
       with:
-        sarif_file: sarif/trivy.sarif
+        sarif_file: sarif/trivy-fs.sarif
 
-    - name: Upload SARIF to GitHub (Gitleaks)
+    - name: Upload SARIF (Gitleaks)
       uses: github/codeql-action/upload-sarif@v4
       continue-on-error: true
       if: hashFiles('sarif/gitleaks.sarif') != ''
       with:
         sarif_file: sarif/gitleaks.sarif
 
-    # Defender CLI
+    # -----------------------------
+    # 6. Install Defender CLI
+    # -----------------------------
     - name: Install Defender CLI
-      shell: pwsh
-      continue-on-error: true
-      run: |
-        Invoke-WebRequest -Uri "https://aka.ms/defendercli/windows" -OutFile defendercli.zip
-        Expand-Archive defendercli.zip -DestinationPath $env:USERPROFILE\defendercli -Force
-        echo "$env:USERPROFILE\defendercli" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-    - name: Upload SARIF to Microsoft Defender for Cloud
-      shell: pwsh
       continue-on-error: false
       run: |
-        $defenderPath = Join-Path $env:USERPROFILE "defendercli/defender.exe"
-        if (-not (Test-Path $defenderPath)) {
-          Write-Error "Defender CLI not found at $defenderPath"
-          exit 1
-        }
-        & $defenderPath scan upload --sarif ./sarif --recursive
+        curl -sSL https://aka.ms/defendercli/linux -o defendercli.tar.gz
+        mkdir defendercli
+        tar -xzf defendercli.tar.gz -C defendercli
+        sudo mv defendercli/defender /usr/local/bin/defender
+        defender --help
+
+    # -----------------------------
+    # 7. Upload SARIF to Microsoft Defender for Cloud
+    # -----------------------------
+    - name: Upload SARIF to Microsoft Defender for Cloud
+      continue-on-error: false
+      run: |
+        defender scan upload --sarif ./sarif --recursive
