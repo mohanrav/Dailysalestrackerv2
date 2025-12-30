@@ -1,5 +1,4 @@
 # Note by Mohan. This workflow does not fail the pipeline. 
-
  name: Defender CLI – Multi-scanner on Ubuntu
 on:
   push:
@@ -7,15 +6,17 @@ on:
   pull_request:
     branches: [ "main" ]
 
+    jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+
 permissions:
   contents: read
   id-token: write
   actions: read
   security-events: write
 
-jobs:
-  security-scan:
-    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout repository
