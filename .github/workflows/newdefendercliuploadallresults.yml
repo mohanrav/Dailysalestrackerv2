@@ -1,5 +1,5 @@
 # Note by Mohan. This workflow does not fail the pipeline. 
- name: Defender CLI – Multi-scanner on Ubuntu
+name: Defender CLI – Multi-scanner on Ubuntu
 on:
   push:
     branches: [ "main" ]
