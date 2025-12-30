@@ -1,5 +1,6 @@
 
 # Note by Mohan. This workflow does not fail the pipeline. 
+
 name: Defender CLI – Upload 3rd‑party SARIF to MDC
 
 on:
@@ -23,10 +24,11 @@ jobs:
       uses: actions/checkout@v3
 
     # ---------------------------------------------------------
-    # 1. Run Checkov (IaC)
+    # 1. CHECKOV (IaC)
     # ---------------------------------------------------------
     - name: Install Checkov
       shell: pwsh
+      continue-on-error: true
       run: pip install checkov
 
     - name: Run Checkov
@@ -35,12 +37,15 @@ jobs:
       run: checkov -d . -o sarif > checkov.sarif
 
     # ---------------------------------------------------------
-    # 2. Run Terrascan (IaC)
+    # 2. TERRASCAN (IaC) — FIXED DOWNLOAD
     # ---------------------------------------------------------
     - name: Install Terrascan
       shell: pwsh
+      continue-on-error: true
       run: |
-        Invoke-WebRequest -Uri "https://github.com/tenable/terrascan/releases/latest/download/terrascan_windows_amd64.zip" -OutFile terrascan.zip
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/tenable/terrascan/releases/latest"
+        $asset = $release.assets | Where-Object { $_.name -match "windows_amd64.zip" }
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile terrascan.zip
         Expand-Archive terrascan.zip -DestinationPath $env:USERPROFILE\terrascan
         echo "$env:USERPROFILE\terrascan" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
@@ -50,10 +55,11 @@ jobs:
       run: terrascan scan -o sarif > terrascan.sarif
 
     # ---------------------------------------------------------
-    # 3. Run Trivy (Secrets)
+    # 3. TRIVY (Secrets)
     # ---------------------------------------------------------
     - name: Install Trivy
       shell: pwsh
+      continue-on-error: true
       run: |
         Invoke-WebRequest -Uri "https://github.com/aquasecurity/trivy/releases/download/v0.67.0/trivy_0.67.0_windows-64bit.zip" -OutFile trivy.zip
         Expand-Archive trivy.zip -DestinationPath $env:USERPROFILE\trivy
@@ -65,10 +71,11 @@ jobs:
       run: trivy fs --scanners secret --format sarif --output trivy.sarif .
 
     # ---------------------------------------------------------
-    # 4. Run Gitleaks (Secrets)
+    # 4. GITLEAKS (Secrets)
     # ---------------------------------------------------------
     - name: Install Gitleaks
       shell: pwsh
+      continue-on-error: true
       run: |
         Invoke-WebRequest -Uri "https://github.com/gitleaks/gitleaks/releases/download/v8.18.1/gitleaks_8.18.1_windows_x64.zip" -OutFile gitleaks.zip
         Expand-Archive gitleaks.zip -DestinationPath $env:USERPROFILE\gitleaks
@@ -84,21 +91,25 @@ jobs:
     # ---------------------------------------------------------
     - name: Upload SARIF to GitHub (Checkov)
       uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true
       with:
         sarif_file: checkov.sarif
 
     - name: Upload SARIF to GitHub (Terrascan)
       uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true
       with:
         sarif_file: terrascan.sarif
 
     - name: Upload SARIF to GitHub (Trivy)
       uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true
       with:
         sarif_file: trivy.sarif
 
     - name: Upload SARIF to GitHub (Gitleaks)
       uses: github/codeql-action/upload-sarif@v3
+      continue-on-error: true
       with:
         sarif_file: gitleaks.sarif
 
@@ -107,6 +118,7 @@ jobs:
     # ---------------------------------------------------------
     - name: Install Defender CLI
       shell: pwsh
+      continue-on-error: true
       run: |
         Invoke-WebRequest -Uri "https://aka.ms/defendercli/windows" -OutFile defendercli.zip
         Expand-Archive defendercli.zip -DestinationPath $env:USERPROFILE\defendercli
@@ -117,4 +129,5 @@ jobs:
     # ---------------------------------------------------------
     - name: Upload SARIF to Microsoft Defender for Cloud
       shell: pwsh
+      continue-on-error: false   # <‑‑ This one SHOULD fail if upload fails
       run: defender scan upload --sarif . --recursive
