@@ -136,7 +136,7 @@ jobs:
           # Your verified working link
           curl -L -o defendercli "https://aka.ms/defender-cli_linux-x64"
           chmod +x defendercli
-          sudo mv defender /usr/local/bin/defender
+          sudo mv defendercli /usr/local/bin/defender
           defender --help
 
       # -----------------------------
