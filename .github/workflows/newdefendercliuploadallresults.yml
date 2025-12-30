@@ -125,14 +125,16 @@ jobs:
           sarif_file: sarif/gitleaks.sarif
 
       # -----------------------------
-      # 6. Install Defender CLI (REAL WORKING URL)
+      # 6. Install Defender CLI (using your working link)
       # -----------------------------
       - name: Install Defender CLI
         continue-on-error: false
         run: |
           sudo apt-get update -y
           sudo apt-get install -y unzip
-          curl -L -o defendercli.zip "https://download.microsoft.com/download/5/9/1/591b7e0e-3f3c-4f5c-9a2a-3f0f1f3c9c3e/defender-linux-x64.zip"
+
+          # Your verified working link
+          curl -L -o defendercli.zip "https://aka.ms/defender-cli_linux-x64"
 
           ls -lh defendercli.zip
 
