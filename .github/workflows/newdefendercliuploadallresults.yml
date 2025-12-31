@@ -60,7 +60,7 @@ jobs:
           terrascan scan -o sarif > sarif/terrascan.sarif || echo "Terrascan failed, continuing"
 
       # -----------------------------
-      # 3. TRIVY (secrets / fs)
+      # 3. TRIVY (filesystem secrets)
       # -----------------------------
       - name: Install Trivy
         continue-on-error: true
@@ -125,24 +125,78 @@ jobs:
           sarif_file: sarif/gitleaks.sarif
 
       # -----------------------------
-      # 6. Install Defender CLI (using your working link)
+      # 6. Install Defender CLI (new binary format)
       # -----------------------------
       - name: Install Defender CLI
-        continue-on-error: false
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y unzip
 
-          # Your verified working link
-          curl -L -o defendercli "https://aka.ms/defender-cli_linux-x64"
-          chmod +x defendercli
-          sudo mv defendercli /usr/local/bin/defender
+          # Download the Defender CLI binary directly
+          curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
+
+          # Ensure it is executable
+          chmod +x defender
+
+          # Move it into PATH
+          sudo mv defender /usr/local/bin/defender
+
+          # Verify it runs
           defender --help
 
       # -----------------------------
-      # 7. Upload SARIF to Microsoft Defender for Cloud
+      # 7. Defender CLI – Code Scan
+      # -----------------------------
+      - name: Defender CLI – Code Scan
+        continue-on-error: true
+        run: |
+          defender scan code \
+            --path . \
+            --output sarif/defender-code.sarif \
+            || echo "Defender code scan failed"
+
+      # -----------------------------
+      # 8. Defender CLI – Dependency Scan
+      # -----------------------------
+      - name: Defender CLI – Dependency Scan
+        continue-on-error: true
+        run: |
+          defender scan dependencies \
+            --path . \
+            --output sarif/defender-deps.sarif \
+            || echo "Defender dependency scan failed"
+
+      # -----------------------------
+      # 9. Defender CLI – Containerfile Scan
+      # -----------------------------
+      - name: Defender CLI – Containerfile Scan
+        continue-on-error: true
+        run: |
+          if [ -f Dockerfile ]; then
+            defender scan containerfile \
+              --path Dockerfile \
+              --output sarif/defender-containerfile.sarif \
+              || echo "Defender containerfile scan failed"
+          fi
+
+      # -----------------------------
+      # 10. Defender CLI – Kubernetes Manifest Scan
+      # -----------------------------
+      - name: Defender CLI – K8s Scan
+        continue-on-error: true
+        run: |
+          if find . -type f \( -name "*.yaml" -o -name "*.yml" \) | grep -q .; then
+            defender scan k8s \
+              --path . \
+              --output sarif/defender-k8s.sarif \
+              || echo "Defender k8s scan failed"
+          fi
+
+      # -----------------------------
+      # 11. Upload ALL SARIF to Microsoft Defender for Cloud
       # -----------------------------
       - name: Upload SARIF to Microsoft Defender for Cloud
-        continue-on-error: false
         run: |
-          defender scan upload --sarif ./sarif --recursive
+          defender upload \
+            --path ./sarif \
+            --type sarif \
+            --recursive
