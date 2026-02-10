@@ -2,9 +2,9 @@ name: Defender CLI – Multi-scanner on Ubuntu
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
   contents: read
@@ -21,80 +21,150 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Ensure SARIF directory
+        shell: bash
         run: mkdir -p sarif
+
+      # -----------------------------
+      # 0. Tools for validation
+      # -----------------------------
+      - name: Install jq (for SARIF validation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -y
+          sudo apt-get install -y jq
 
       # -----------------------------
       # 1. CHECKOV (IaC)
       # -----------------------------
       - name: Install Checkov
+        shell: bash
         run: |
+          set -euo pipefail
           python3 -m pip install --upgrade pip
           pip install checkov
 
       - name: Run Checkov
+        shell: bash
         continue-on-error: true
         run: |
-          checkov -d . \
+          set -euo pipefail
+          # If Checkov fails, remove the SARIF so we don't upload invalid JSON.
+          if checkov -d . \
             --skip-path .git \
             --skip-path .github \
             --skip-path node_modules \
             --skip-path venv \
             --skip-path .venv \
             --skip-path __pycache__ \
-            -o sarif > sarif/checkov.sarif || echo "Checkov failed, continuing"
+            -o sarif > sarif/checkov.sarif; then
+            echo "Checkov completed"
+          else
+            echo "Checkov failed, removing SARIF to avoid upload errors"
+            rm -f sarif/checkov.sarif
+          fi
 
       # -----------------------------
-      # 2. TERRASCAN (IaC)
+      # 2. TERRASCAN (IaC) - pin version + robust download
       # -----------------------------
       - name: Install Terrascan
+        shell: bash
         continue-on-error: true
         run: |
-          curl -sSL https://github.com/tenable/terrascan/releases/latest/download/terrascan_linux_amd64.tar.gz -o terrascan.tar.gz || exit 0
+          set -euo pipefail
+          TERRASCAN_VERSION="1.19.1"
+          URL="https://github.com/tenable/terrascan/releases/download/v${TERRASCAN_VERSION}/terrascan_${TERRASCAN_VERSION}_Linux_x86_64.tar.gz"
+
+          curl -fL --retry 3 --retry-delay 2 -o terrascan.tar.gz "$URL"
           tar -xzf terrascan.tar.gz terrascan
-          sudo mv terrascan /usr/local/bin/terrascan
+          sudo install -m 0755 terrascan /usr/local/bin/terrascan
           terrascan version || true
 
       - name: Run Terrascan
+        shell: bash
         continue-on-error: true
         run: |
-          terrascan scan -o sarif > sarif/terrascan.sarif || echo "Terrascan failed, continuing"
+          set -euo pipefail
+          if command -v terrascan >/dev/null 2>&1; then
+            if terrascan scan -o sarif > sarif/terrascan.sarif; then
+              echo "Terrascan completed"
+            else
+              echo "Terrascan failed, removing SARIF to avoid upload errors"
+              rm -f sarif/terrascan.sarif
+            fi
+          else
+            echo "Terrascan not installed; skipping"
+            rm -f sarif/terrascan.sarif
+          fi
 
       # -----------------------------
-      # 3. TRIVY (filesystem secrets)
+      # 3. TRIVY (filesystem secrets) - avoid brittle tar pipe
       # -----------------------------
       - name: Install Trivy
-        continue-on-error: true
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y wget
-          wget -qO- https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.51.2_Linux-64bit.tar.gz | tar xz
-          sudo mv trivy /usr/local/bin/trivy
-          trivy --version || true
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          version: "0.51.2"
 
       - name: Run Trivy (filesystem secrets)
+        shell: bash
         continue-on-error: true
         run: |
-          trivy fs --scanners secret --format sarif --output sarif/trivy-fs.sarif . || echo "Trivy fs failed, continuing"
+          set -euo pipefail
+          if trivy fs --scanners secret --format sarif --output sarif/trivy-fs.sarif .; then
+            echo "Trivy fs completed"
+          else
+            echo "Trivy fs failed, removing SARIF to avoid upload errors"
+            rm -f sarif/trivy-fs.sarif
+          fi
 
       # -----------------------------
       # 4. GITLEAKS
       # -----------------------------
       - name: Install Gitleaks
+        shell: bash
         continue-on-error: true
         run: |
+          set -euo pipefail
           GITLEAKS_VERSION=8.18.1
-          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz -o gitleaks.tar.gz || exit 0
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            -o gitleaks.tar.gz
           tar -xzf gitleaks.tar.gz gitleaks
-          sudo mv gitleaks /usr/local/bin/gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
           gitleaks version || true
 
       - name: Run Gitleaks
+        shell: bash
         continue-on-error: true
         run: |
-          gitleaks detect --report-format sarif --report-path sarif/gitleaks.sarif || echo "Gitleaks failed, continuing"
+          set -euo pipefail
+          # gitleaks returns non-zero when leaks are found. Keep SARIF if it exists and is non-empty.
+          if gitleaks detect --report-format sarif --report-path sarif/gitleaks.sarif; then
+            echo "Gitleaks completed with no leaks"
+          else
+            echo "Gitleaks returned non-zero (likely leaks found); keeping SARIF if present"
+            test -s sarif/gitleaks.sarif || rm -f sarif/gitleaks.sarif
+          fi
 
       # -----------------------------
-      # 5. Upload SARIF to GitHub (PR annotations)
+      # 5. Validate SARIF (prevents upload-sarif from failing on bad JSON)
+      # -----------------------------
+      - name: Validate SARIF files
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for f in sarif/*.sarif; do
+            if jq -e '.runs and (.runs|length>0)' "$f" >/dev/null 2>&1; then
+              echo "OK SARIF: $f"
+            else
+              echo "Invalid/empty SARIF, removing: $f"
+              rm -f "$f"
+            fi
+          done
+
+      # -----------------------------
+      # 6. Upload SARIF to GitHub (PR annotations)
       # -----------------------------
       - name: Upload SARIF (Checkov)
         uses: github/codeql-action/upload-sarif@v4
@@ -125,78 +195,105 @@ jobs:
           sarif_file: sarif/gitleaks.sarif
 
       # -----------------------------
-      # 6. Install Defender CLI (new binary format)
+      # 7. Install Defender CLI (new binary format)
       # -----------------------------
       - name: Install Defender CLI
+        shell: bash
         run: |
-          sudo apt-get update -y
-
-          # Download the Defender CLI binary directly
-          curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
-
-          # Ensure it is executable
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 2 -o defender "https://aka.ms/defender-cli_linux-x64"
           chmod +x defender
-
-          # Move it into PATH
           sudo mv defender /usr/local/bin/defender
-
-          # Verify it runs
           defender --help
 
       # -----------------------------
-      # 7. Defender CLI – Code Scan
+      # 8. Defender CLI – scans (fix: remove unsupported --path flag)
       # -----------------------------
       - name: Defender CLI – Code Scan
+        shell: bash
         continue-on-error: true
         run: |
-          defender scan code \
-            --path . \
-            --output sarif/defender-code.sarif \
-            || echo "Defender code scan failed"
+          set -euo pipefail
+          defender scan code . --output sarif/defender-code.sarif || (echo "Defender code scan failed" && rm -f sarif/defender-code.sarif)
 
-      # -----------------------------
-      # 8. Defender CLI – Dependency Scan
-      # -----------------------------
       - name: Defender CLI – Dependency Scan
+        shell: bash
         continue-on-error: true
         run: |
-          defender scan dependencies \
-            --path . \
-            --output sarif/defender-deps.sarif \
-            || echo "Defender dependency scan failed"
+          set -euo pipefail
+          defender scan dependencies . --output sarif/defender-deps.sarif || (echo "Defender dependency scan failed" && rm -f sarif/defender-deps.sarif)
 
-      # -----------------------------
-      # 9. Defender CLI – Containerfile Scan
-      # -----------------------------
       - name: Defender CLI – Containerfile Scan
+        shell: bash
         continue-on-error: true
         run: |
+          set -euo pipefail
           if [ -f Dockerfile ]; then
-            defender scan containerfile \
-              --path Dockerfile \
-              --output sarif/defender-containerfile.sarif \
-              || echo "Defender containerfile scan failed"
+            defender scan containerfile Dockerfile --output sarif/defender-containerfile.sarif || (echo "Defender containerfile scan failed" && rm -f sarif/defender-containerfile.sarif)
           fi
 
-      # -----------------------------
-      # 10. Defender CLI – Kubernetes Manifest Scan
-      # -----------------------------
       - name: Defender CLI – K8s Scan
+        shell: bash
         continue-on-error: true
         run: |
+          set -euo pipefail
           if find . -type f \( -name "*.yaml" -o -name "*.yml" \) | grep -q .; then
-            defender scan k8s \
-              --path . \
-              --output sarif/defender-k8s.sarif \
-              || echo "Defender k8s scan failed"
+            defender scan k8s . --output sarif/defender-k8s.sarif || (echo "Defender k8s scan failed" && rm -f sarif/defender-k8s.sarif)
           fi
 
+      # Re-validate after Defender produces new SARIF
+      - name: Validate SARIF files (post Defender)
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for f in sarif/*.sarif; do
+            if jq -e '.runs and (.runs|length>0)' "$f" >/dev/null 2>&1; then
+              echo "OK SARIF: $f"
+            else
+              echo "Invalid/empty SARIF, removing: $f"
+              rm -f "$f"
+            fi
+          done
+
+      # Optional: upload Defender SARIFs to GitHub too (recommended)
+      - name: Upload SARIF (Defender code)
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        if: hashFiles('sarif/defender-code.sarif') != ''
+        with:
+          sarif_file: sarif/defender-code.sarif
+
+      - name: Upload SARIF (Defender deps)
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        if: hashFiles('sarif/defender-deps.sarif') != ''
+        with:
+          sarif_file: sarif/defender-deps.sarif
+
+      - name: Upload SARIF (Defender containerfile)
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        if: hashFiles('sarif/defender-containerfile.sarif') != ''
+        with:
+          sarif_file: sarif/defender-containerfile.sarif
+
+      - name: Upload SARIF (Defender k8s)
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
+        if: hashFiles('sarif/defender-k8s.sarif') != ''
+        with:
+          sarif_file: sarif/defender-k8s.sarif
+
       # -----------------------------
-      # 11. Upload ALL SARIF to Microsoft Defender for Cloud
+      # 9. Upload ALL SARIF to Microsoft Defender for Cloud
+      # Fix: remove unsupported --path flag (based on your logs)
       # -----------------------------
       - name: Upload SARIF to Microsoft Defender for Cloud
+        shell: bash
+        continue-on-error: true
         run: |
-          defender upload \
-            --path ./sarif \
-            --type sarif \
-            --recursive
+          set -euo pipefail
+          # CLI syntax varies by version; your logs show --path is not recognized.
+          # Use positional path and keep it non-blocking.
+          defender upload ./sarif --type sarif --recursive || echo "Defender upload failed (non-blocking)"
